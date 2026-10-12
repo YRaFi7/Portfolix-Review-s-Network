@@ -1,0 +1,241 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  MODERATOR
+  USER
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FLAGGED
+}
+
+enum ReviewSource {
+  DIRECT
+  TRUSTPILOT
+  GOOGLE
+  CLUTCH
+  G2
+  VERIFIED_IMPORT
+}
+
+enum Sentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+enum ReportReason {
+  SPAM
+  OFFENSIVE
+  FAKE
+  CONFLICT_OF_INTEREST
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
+enum VoteType {
+  HELPFUL
+  UNHELPFUL
+}
+
+model Brand {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  name         String
+  legalName    String   @default("Portfolix Enterprise Private Limited")
+  parentCompany String  @default("Portfolix Enterprise Private Limited")
+  domain       String   @unique
+  tagline      String
+  description  String
+  disclosure   String?
+  logoUrl      String?
+  websiteUrl   String
+  industry     String
+  foundedYear  Int?
+  headquarters String?
+  primaryColor String   @default("#0f766e")
+  accentColor  String   @default("#0284c7")
+  ratingScore  Float    @default(0.0)
+  reviewCount  Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  reviews Review[]
+  improvements Improvement[]
+  reports ExperienceReport[]
+
+  @@index([slug])
+  @@index([domain])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  passwordHash  String?
+  role          Role      @default(USER)
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Review {
+  id                 String       @id @default(cuid())
+  brandId            String
+  brand              Brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  authorName         String
+  authorEmail        String
+  authorTitle        String?
+  authorCompany      String?
+  authorLocation     String?
+  reviewerType       String?      @default("Customer") // Student, Alumni, Client, Business Client, Intern, Parent, Partner, Other
+  rating             Int          // 1 to 5
+  title              String
+  content            String
+  pros               String?
+  cons               String?
+  status             ReviewStatus @default(PENDING)
+  source             ReviewSource @default(DIRECT)
+  sourceUrl          String?
+  externalReviewId   String?
+  isVerifiedBuyer    Boolean      @default(false)
+  verificationStatus String?      @default("UNVERIFIED") // UNVERIFIED, PENDING_VERIFICATION, VERIFIED_CUSTOMER, VERIFIED_STUDENT
+  verificationMethod String?      // EMAIL_OTP, LMS_ACCOUNT, INVOICE_REFERENCE, PROJECT_REF, CRM_RECORD, MANUAL_ADMIN
+  verificationToken  String?      @unique
+  verifiedAt         DateTime?
+  helpfulCount       Int          @default(0)
+  unhelpfulCount     Int          @default(0)
+  sentiment          Sentiment    @default(POSITIVE)
+  serviceUsed        String?
+  rejectionReason    String?
+  incentivised       Boolean      @default(false)
+  incentiveDescription String?
+  language           String       @default("en") // en, ml, hi
+  translation        String?
+  experienceDate     DateTime?
+  publishedDate      DateTime?
+  ipAddress          String?
+  userAgent          String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  responses CompanyResponse[]
+  votes     ReviewVote[]
+  reports   ReviewReport[]
+  auditLogs AuditLog[]
+
+  @@index([brandId])
+  @@index([status])
+  @@index([rating])
+  @@index([createdAt])
+  @@index([isVerifiedBuyer])
+}
+
+model Improvement {
+  id              String   @id @default(cuid())
+  brandId         String
+  brand           Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  youSaid         String
+  weDid           String
+  category        String?
+  implementedDate DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@index([brandId])
+}
+
+model ExperienceReport {
+  id               String   @id @default(cuid())
+  brandId          String
+  brand            Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  year             Int
+  title            String
+  slug             String   @unique
+  summary          String
+  totalRespondents Int
+  averageRating    Float
+  keyFindings      String   // JSON string
+  methodology      String
+  createdAt        DateTime @default(now())
+
+  @@index([brandId])
+  @@index([year])
+}
+
+model CompanyResponse {
+  id         String   @id @default(cuid())
+  reviewId   String
+  review     Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  authorName String
+  authorRole String   @default("Company Representative")
+  content    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([reviewId])
+}
+
+model ReviewVote {
+  id        String   @id @default(cuid())
+  reviewId  String
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  ipHash    String
+  voteType  VoteType @default(HELPFUL)
+  createdAt DateTime @default(now())
+
+  @@unique([reviewId, ipHash])
+  @@index([reviewId])
+}
+
+model ReviewReport {
+  id            String       @id @default(cuid())
+  reviewId      String
+  review        Review       @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  reason        ReportReason
+  details       String?
+  reporterEmail String?
+  status        ReportStatus @default(PENDING)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([reviewId])
+  @@index([status])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  reviewId   String?
+  review     Review?  @relation(fields: [reviewId], references: [id], onDelete: SetNull)
+  actorEmail String
+  action     String
+  metadata   String?
+  createdAt  DateTime @default(now())
+
+  @@index([reviewId])
+  @@index([createdAt])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
